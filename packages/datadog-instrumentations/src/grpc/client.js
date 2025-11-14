@@ -97,10 +97,13 @@ function wrapMethod (method, path, type, hasPeer) {
 }
 
 function wrapCallback (ctx, callback = () => {}) {
-  return shimmer.wrapFunction(callback, callback => function (err) {
+  return shimmer.wrapFunction(callback, callback => function (err, responseMessage) {
     if (err) {
       ctx.error = err
       errorChannel.publish(ctx)
+    } else if (responseMessage !== undefined) {
+      // Capture response message for payload capture
+      ctx.responseMessage = responseMessage
     }
 
     return asyncStartChannel.runStores(ctx, () => {
@@ -113,11 +116,13 @@ function wrapCallback (ctx, callback = () => {}) {
 const onStatusWithPeer = function (ctx, arg1, thisArg) {
   ctx.result = arg1
   ctx.peer = thisArg.getPeer()
+  // responseMessage may have been set by callback or data event handlers
   finishChannel.publish(ctx)
 }
 
 const onStatusWithoutPeer = function (ctx, arg1) {
   ctx.result = arg1
+  // responseMessage may have been set by callback or data event handlers
   finishChannel.publish(ctx)
 }
 
@@ -130,6 +135,13 @@ function createWrapEmit (ctx, hasPeer = false) {
         case 'error':
           ctx.error = arg1
           errorChannel.publish(ctx)
+          break
+        case 'data':
+          // Capture streaming response message for payload capture
+          // For streaming calls, we capture the first message received
+          if (!ctx.responseMessage && arg1 !== undefined) {
+            ctx.responseMessage = arg1
+          }
           break
         case 'status':
           onStatus(ctx, arg1, this)
@@ -149,7 +161,9 @@ function callMethod (client, method, args, path, metadata, type, hasPeer = false
   const length = args.length
   const callback = args[length - 1]
 
-  const ctx = { metadata, path, type }
+  // Capture request message for payload capture
+  const requestMessage = args[0]
+  const ctx = { metadata, path, type, requestMessage }
 
   return startChannel.runStores(ctx, () => {
     try {

@@ -30,7 +30,11 @@ function wrapHandler (func, name) {
     const type = types[this.type]
     const isStream = type !== 'unary'
 
-    const ctx = { name, metadata, type }
+    // Capture request message for payload capture
+    // For unary: call.request contains the request message
+    // For streaming: call is the stream itself, request comes through 'data' events
+    const requestMessage = type === 'unary' ? call.request : undefined
+    const ctx = { name, metadata, type, requestMessage }
 
     return startChannel.runStores(ctx, () => {
       try {
@@ -80,6 +84,13 @@ function createWrapEmit (call, ctx, onCancel) {
   return function wrapEmit (emit) {
     return function (event, arg1) {
       switch (event) {
+        case 'data':
+          // Capture streaming request message for payload capture
+          // For streaming calls, we capture the first message received
+          if (!ctx.requestMessage && arg1 !== undefined) {
+            ctx.requestMessage = arg1
+          }
+          break
         case 'error':
           ctx.error = arg1
           errorChannel.publish(ctx)
@@ -110,6 +121,18 @@ function wrapStream (call, ctx, onCancel) {
     call.call.sendStatus = wrapSendStatus(call.call.sendStatus, ctx)
   }
 
+  // Capture streaming response messages for payload capture
+  // For streaming responses, we capture the first message sent
+  if (typeof call.write === 'function') {
+    const originalWrite = call.write
+    call.write = function (chunk) {
+      if (!ctx.responseMessage && chunk !== undefined) {
+        ctx.responseMessage = chunk
+      }
+      return originalWrite.apply(this, arguments)
+    }
+  }
+
   shimmer.wrap(call, 'emit', createWrapEmit(call, ctx, onCancel))
 }
 
@@ -121,6 +144,10 @@ function wrapCallback (callback = () => {}, call, ctx, onCancel) {
     } else {
       ctx.code = OK
       ctx.trailer = trailer
+      // Capture response message for payload capture
+      if (value !== undefined) {
+        ctx.responseMessage = value
+      }
     }
 
     finishChannel.publish(ctx)

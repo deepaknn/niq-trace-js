@@ -140,6 +140,38 @@ function instrument (req, res, handler, error) {
 
   requests.add(req)
 
+  // Wrap response methods for payload capture
+  if (res && !res._payloadBodyWrapped) {
+    res._payloadBodyWrapped = true
+
+    // Wrap res.send() if it exists (Next.js API routes)
+    if (typeof res.send === 'function') {
+      const originalSend = res.send
+      res.send = function (body) {
+        res._payloadBody = body
+        return originalSend.call(this, body)
+      }
+    }
+
+    // Wrap res.json() if it exists (Next.js API routes)
+    if (typeof res.json === 'function') {
+      const originalJson = res.json
+      res.json = function (body) {
+        res._payloadBody = body
+        return originalJson.call(this, body)
+      }
+    }
+
+    // Wrap res.end() for raw responses
+    const originalEnd = res.end
+    res.end = function (chunk, encoding, callback) {
+      if (chunk && !res._payloadBody) {
+        res._payloadBody = chunk
+      }
+      return originalEnd.call(this, chunk, encoding, callback)
+    }
+  }
+
   const ctx = { req, res }
   // Parse query parameters from request URL
   if (queryParsedChannel.hasSubscribers && req.url) {
