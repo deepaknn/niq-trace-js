@@ -50,6 +50,20 @@ function wrapHandle (handle) {
       handleChannel.publish({ req, res })
     }
 
+    // Wrap response end() to capture response body
+    if (res && !res._payloadBodyWrapped) {
+      const originalEnd = res.end
+      res._payloadBodyWrapped = true
+
+      res.end = function (chunk, encoding, callback) {
+        // Store response body for payload capture
+        if (chunk && (typeof chunk === 'string' || Buffer.isBuffer(chunk))) {
+          res._payloadBody = chunk
+        }
+        return originalEnd.call(this, chunk, encoding, callback)
+      }
+    }
+
     return handle.apply(this, arguments)
   }
 }

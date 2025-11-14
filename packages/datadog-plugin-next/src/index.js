@@ -15,6 +15,17 @@ class NextPlugin extends ServerPlugin {
     super(...args)
     this._requests = new WeakMap()
     this.addSub('apm:next:page:load', message => this.pageLoad(message))
+
+    // Subscribe to body parsed channel for request payload capture
+    this.addSub('apm:next:body-parsed', ({ body }) => {
+      const store = storage('legacy').getStore()
+      if (store && store.span) {
+        const req = this._requests.get(store.span)
+        if (req && body !== undefined && body !== null) {
+          req.body = body
+        }
+      }
+    })
   }
 
   bindStart ({ req, res }) {

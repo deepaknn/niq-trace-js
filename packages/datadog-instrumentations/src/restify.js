@@ -80,10 +80,47 @@ function wrapNext (req, next) {
   })
 }
 
+function wrapResponseSend (send) {
+  return function wrappedSend (code, body) {
+    // Restify signature: res.send([code], body, [headers])
+    // Store response body for payload capture
+    if (typeof code !== 'number') {
+      // res.send(body)
+      this._payloadBody = code
+    } else if (body !== undefined) {
+      // res.send(code, body)
+      this._payloadBody = body
+    }
+    return send.apply(this, arguments)
+  }
+}
+
+function wrapResponseJson (json) {
+  return function wrappedJson (code, obj) {
+    // Restify signature: res.json([code], obj, [headers])
+    // Store response body for payload capture
+    if (typeof code !== 'number') {
+      // res.json(obj)
+      this._payloadBody = code
+    } else if (obj !== undefined) {
+      // res.json(code, obj)
+      this._payloadBody = obj
+    }
+    return json.apply(this, arguments)
+  }
+}
+
 addHook({ name: 'restify', versions: ['>=3'], file: 'lib/server.js' }, Server => {
   shimmer.wrap(Server.prototype, '_setupRequest', wrapSetupRequest)
   shimmer.massWrap(Server.prototype, handlers, wrapHandler)
   shimmer.massWrap(Server.prototype, methods, wrapMethod)
 
   return Server
+})
+
+addHook({ name: 'restify', versions: ['>=3'], file: 'lib/response.js' }, Response => {
+  shimmer.wrap(Response.prototype, 'send', wrapResponseSend)
+  shimmer.wrap(Response.prototype, 'json', wrapResponseJson)
+
+  return Response
 })
