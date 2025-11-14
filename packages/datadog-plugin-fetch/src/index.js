@@ -23,6 +23,20 @@ class FetchPlugin extends HttpClientPlugin {
       }
     }
 
+    // Capture request body (if available and not already consumed)
+    if (req.body && !req.bodyUsed) {
+      try {
+        const clonedRequest = req.clone()
+        clonedRequest.text().then(body => {
+          ctx.requestBody = body
+        }).catch(() => {
+          // Body already consumed or error reading
+        })
+      } catch (err) {
+        // Clone failed or body not readable
+      }
+    }
+
     return store
   }
 
@@ -33,6 +47,24 @@ class FetchPlugin extends HttpClientPlugin {
 
   asyncEnd (ctx) {
     ctx.res = ctx.result
+
+    // Capture response body (if available and not already consumed)
+    if (ctx.result && !ctx.result.bodyUsed) {
+      try {
+        const clonedResponse = ctx.result.clone()
+        clonedResponse.text().then(body => {
+          ctx.responseBody = body
+          this.finish(ctx)
+        }).catch(() => {
+          // Body already consumed or error reading
+          this.finish(ctx)
+        })
+        return
+      } catch (err) {
+        // Clone failed or body not readable
+      }
+    }
+
     return this.finish(ctx)
   }
 }

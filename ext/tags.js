@@ -22,8 +22,14 @@ const tags = {
   HTTP_ROUTE: 'http.route',
   HTTP_REQUEST_HEADERS: 'http.request.headers',
   HTTP_RESPONSE_HEADERS: 'http.response.headers',
+  HTTP_REQUEST_BODY: 'http.request.body',
+  HTTP_RESPONSE_BODY: 'http.response.body',
   HTTP_USERAGENT: 'http.useragent',
   HTTP_CLIENT_IP: 'http.client_ip',
+
+  // gRPC
+  GRPC_REQUEST_BODY: 'grpc.request.body',
+  GRPC_RESPONSE_BODY: 'grpc.response.body',
 
   // Messaging
 

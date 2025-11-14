@@ -57,6 +57,8 @@ module.exports = {
   'cloudPayloadTagging.maxDepth': 10,
   'cloudPayloadTagging.rules': [],
   'crashtracking.enabled': true,
+  'payloadCapture.enabled': false,
+  'payloadCapture.maxSize': 4096,
   'codeOriginForSpans.enabled': true,
   'codeOriginForSpans.experimental.exit_spans.enabled': false,
   dbmPropagationMode: 'disabled',

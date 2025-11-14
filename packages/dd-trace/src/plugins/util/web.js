@@ -11,6 +11,7 @@ const urlFilter = require('./urlfilter')
 const { ERROR_MESSAGE, ERROR_TYPE, ERROR_STACK } = require('../../constants')
 const { createInferredProxySpan, finishInferredProxySpan } = require('./inferred_proxy')
 const TracingPlugin = require('../tracing')
+const { capturePayload } = require('./payload')
 
 let extractIp
 
@@ -27,6 +28,8 @@ const HTTP_STATUS_CODE = tags.HTTP_STATUS_CODE
 const HTTP_ROUTE = tags.HTTP_ROUTE
 const HTTP_REQUEST_HEADERS = tags.HTTP_REQUEST_HEADERS
 const HTTP_RESPONSE_HEADERS = tags.HTTP_RESPONSE_HEADERS
+const HTTP_REQUEST_BODY = tags.HTTP_REQUEST_BODY
+const HTTP_RESPONSE_BODY = tags.HTTP_RESPONSE_BODY
 const HTTP_USERAGENT = tags.HTTP_USERAGENT
 const HTTP_CLIENT_IP = tags.HTTP_CLIENT_IP
 const MANUAL_DROP = tags.MANUAL_DROP
@@ -343,6 +346,7 @@ const web = {
 
     addRequestTags(context, this.TYPE)
     addResponseTags(context)
+    addPayloads(context)
 
     context.config.hooks.request(context.span, req, res)
     addResourceTag(context)
@@ -543,6 +547,36 @@ function addHeaders (context) {
       inferredProxySpan?.setTag(tag || `${HTTP_RESPONSE_HEADERS}.${key}`, resHeader)
     }
   })
+}
+
+function addPayloads (context) {
+  const { req, res, config, span, inferredProxySpan } = context
+
+  // Capture request payload
+  if (req.body !== undefined && req.body !== null) {
+    const captured = capturePayload(req.body, config)
+    if (captured) {
+      span.setTag(HTTP_REQUEST_BODY, captured.value)
+      inferredProxySpan?.setTag(HTTP_REQUEST_BODY, captured.value)
+      if (captured.truncated) {
+        span.setTag(`${HTTP_REQUEST_BODY}.truncated`, true)
+        inferredProxySpan?.setTag(`${HTTP_REQUEST_BODY}.truncated`, true)
+      }
+    }
+  }
+
+  // Capture response payload (stored by response instrumentation)
+  if (res._payloadBody !== undefined && res._payloadBody !== null) {
+    const captured = capturePayload(res._payloadBody, config)
+    if (captured) {
+      span.setTag(HTTP_RESPONSE_BODY, captured.value)
+      inferredProxySpan?.setTag(HTTP_RESPONSE_BODY, captured.value)
+      if (captured.truncated) {
+        span.setTag(`${HTTP_RESPONSE_BODY}.truncated`, true)
+        inferredProxySpan?.setTag(`${HTTP_RESPONSE_BODY}.truncated`, true)
+      }
+    }
+  }
 }
 
 function extractURL (req) {

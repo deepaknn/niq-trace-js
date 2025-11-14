@@ -86,8 +86,33 @@ function patch (http, methodName) {
           const req = request.call(this, options, callback)
           const emit = req.emit
           const setTimeout = req.setTimeout
+          const write = req.write
 
           ctx.req = req
+
+          // Capture request body by buffering writes
+          const requestChunks = []
+          let requestSize = 0
+          const maxPayloadSize = 4096 // Will be checked against config in plugin
+
+          req.write = function (chunk, encoding, callback) {
+            // Buffer request body for payload capture (up to size limit)
+            if (chunk && requestSize < maxPayloadSize) {
+              const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding)
+              const remainingSpace = maxPayloadSize - requestSize
+              const chunkToStore = buffer.length > remainingSpace ? buffer.slice(0, remainingSpace) : buffer
+              requestChunks.push(chunkToStore)
+              requestSize += chunkToStore.length
+            }
+
+            return write.call(this, chunk, encoding, callback)
+          }
+
+          req.on('finish', () => {
+            if (requestChunks.length > 0) {
+              ctx.requestBody = Buffer.concat(requestChunks)
+            }
+          })
 
           // tracked to accurately discern custom request socket timeout
           let customRequestTimeout = false
@@ -101,7 +126,30 @@ function patch (http, methodName) {
               case 'response': {
                 const res = arg
                 ctx.res = res
-                res.on('end', finish)
+
+                // Capture response body by buffering data events
+                const responseChunks = []
+                let responseSize = 0
+
+                res.on('data', (chunk) => {
+                  // Buffer response body for payload capture (up to size limit)
+                  if (chunk && responseSize < maxPayloadSize) {
+                    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+                    const remainingSpace = maxPayloadSize - responseSize
+                    const chunkToStore = buffer.length > remainingSpace
+                      ? buffer.slice(0, remainingSpace)
+                      : buffer
+                    responseChunks.push(chunkToStore)
+                    responseSize += chunkToStore.length
+                  }
+                })
+
+                res.on('end', () => {
+                  if (responseChunks.length > 0) {
+                    ctx.responseBody = Buffer.concat(responseChunks)
+                  }
+                  finish()
+                })
                 res.on(errorMonitor, finish)
                 break
               }

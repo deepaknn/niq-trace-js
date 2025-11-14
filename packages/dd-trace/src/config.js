@@ -520,6 +520,8 @@ class Config {
       DD_TRACE_CLOUD_RESPONSE_PAYLOAD_TAGGING,
       DD_TRACE_CLOUD_PAYLOAD_TAGGING_MAX_DEPTH,
       DD_TRACE_DYNAMODB_TABLE_PRIMARY_KEYS,
+      NIQ_TRACER_PAYLOAD_CAPTURE,
+      NIQ_TRACER_MAX_PAYLOAD_SIZE,
       DD_TRACE_ENABLED,
       DD_TRACE_EXPERIMENTAL_EXPORTER,
       DD_TRACE_EXPERIMENTAL_GET_RUM_DATA_ENABLED,
@@ -674,6 +676,9 @@ class Config {
       target['cloudPayloadTagging.maxDepth'] = maybeInt(DD_TRACE_CLOUD_PAYLOAD_TAGGING_MAX_DEPTH)
     }
     this.#setBoolean(target, 'crashtracking.enabled', DD_CRASHTRACKING_ENABLED)
+    this.#setBoolean(target, 'payloadCapture.enabled', NIQ_TRACER_PAYLOAD_CAPTURE)
+    target['payloadCapture.maxSize'] = maybeInt(NIQ_TRACER_MAX_PAYLOAD_SIZE)
+    unprocessedTarget['payloadCapture.maxSize'] = NIQ_TRACER_MAX_PAYLOAD_SIZE
     this.#setBoolean(target, 'codeOriginForSpans.enabled', DD_CODE_ORIGIN_FOR_SPANS_ENABLED)
     this.#setBoolean(
       target,
@@ -969,6 +974,9 @@ class Config {
       this.#setBoolean(opts, 'cloudPayloadTagging.responsesEnabled', options.cloudPayloadTagging.responsesEnabled)
     }
     opts['cloudPayloadTagging.maxDepth'] = maybeInt(options.cloudPayloadTagging?.maxDepth)
+    this.#setBoolean(opts, 'payloadCapture.enabled', options.payloadCapture?.enabled)
+    opts['payloadCapture.maxSize'] = maybeInt(options.payloadCapture?.maxSize)
+    this.#optsUnprocessed['payloadCapture.maxSize'] = options.payloadCapture?.maxSize
     opts.baggageMaxBytes = options.baggageMaxBytes
     opts.baggageMaxItems = options.baggageMaxItems
     opts.baggageTagKeys = options.baggageTagKeys

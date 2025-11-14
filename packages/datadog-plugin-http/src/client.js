@@ -10,10 +10,13 @@ const urlFilter = require('../../dd-trace/src/plugins/util/urlfilter')
 const log = require('../../dd-trace/src/log')
 const { CLIENT_PORT_KEY, COMPONENT, ERROR_MESSAGE, ERROR_TYPE, ERROR_STACK } = require('../../dd-trace/src/constants')
 const { URL } = require('url')
+const { capturePayload } = require('../../dd-trace/src/plugins/util/payload')
 
 const HTTP_STATUS_CODE = tags.HTTP_STATUS_CODE
 const HTTP_REQUEST_HEADERS = tags.HTTP_REQUEST_HEADERS
 const HTTP_RESPONSE_HEADERS = tags.HTTP_RESPONSE_HEADERS
+const HTTP_REQUEST_BODY = tags.HTTP_REQUEST_BODY
+const HTTP_RESPONSE_BODY = tags.HTTP_RESPONSE_BODY
 
 class HttpClientPlugin extends ClientPlugin {
   static id = 'http'
@@ -102,10 +105,32 @@ class HttpClientPlugin extends ClientPlugin {
       }
 
       addResponseHeaders(res, span, this.config)
+
+      // Capture response body
+      if (ctx.responseBody) {
+        const captured = capturePayload(ctx.responseBody, this.config)
+        if (captured) {
+          span.setTag(HTTP_RESPONSE_BODY, captured.value)
+          if (captured.truncated) {
+            span.setTag(`${HTTP_RESPONSE_BODY}.truncated`, true)
+          }
+        }
+      }
     }
 
     if (req) {
       addRequestHeaders(req, span, this.config)
+
+      // Capture request body
+      if (ctx.requestBody) {
+        const captured = capturePayload(ctx.requestBody, this.config)
+        if (captured) {
+          span.setTag(HTTP_REQUEST_BODY, captured.value)
+          if (captured.truncated) {
+            span.setTag(`${HTTP_REQUEST_BODY}.truncated`, true)
+          }
+        }
+      }
     }
 
     this.config.hooks.request(span, req, res)

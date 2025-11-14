@@ -4,6 +4,11 @@ const { storage } = require('../../datadog-core')
 const ClientPlugin = require('../../dd-trace/src/plugins/client')
 const { TEXT_MAP } = require('../../../ext/formats')
 const { addMetadataTags, getFilter, getMethodMetadata } = require('./util')
+const tags = require('../../../ext/tags')
+const { capturePayload } = require('../../dd-trace/src/plugins/util/payload')
+
+const GRPC_REQUEST_BODY = tags.GRPC_REQUEST_BODY
+const GRPC_RESPONSE_BODY = tags.GRPC_RESPONSE_BODY
 
 class GrpcClientPlugin extends ClientPlugin {
   static id = 'grpc'
@@ -21,7 +26,7 @@ class GrpcClientPlugin extends ClientPlugin {
 
   bindStart (message) {
     const store = storage('legacy').getStore()
-    const { metadata, path, type } = message
+    const { metadata, path, type, requestMessage } = message
     const metadataFilter = this.config.metadataFilter
     const method = getMethodMetadata(path, type)
     const span = this.startSpan(this.operationName(), {
@@ -51,6 +56,17 @@ class GrpcClientPlugin extends ClientPlugin {
       inject(this.tracer, span, metadata)
     }
 
+    // Capture gRPC request message
+    if (requestMessage) {
+      const captured = capturePayload(requestMessage, this.config)
+      if (captured) {
+        span.setTag(GRPC_REQUEST_BODY, captured.value)
+        if (captured.truncated) {
+          span.setTag(`${GRPC_REQUEST_BODY}.truncated`, true)
+        }
+      }
+    }
+
     message.span = span
     message.parentStore = store
     message.currentStore = { ...store, span }
@@ -70,7 +86,7 @@ class GrpcClientPlugin extends ClientPlugin {
     this.addError(error, span)
   }
 
-  finish ({ span, result, peer }) {
+  finish ({ span, result, peer, responseMessage }) {
     if (!span) return
 
     const { code, metadata } = result || {}
@@ -80,6 +96,17 @@ class GrpcClientPlugin extends ClientPlugin {
 
     if (metadata && metadataFilter) {
       addMetadataTags(span, metadata, metadataFilter, 'response')
+    }
+
+    // Capture gRPC response message
+    if (responseMessage) {
+      const captured = capturePayload(responseMessage, this.config)
+      if (captured) {
+        span.setTag(GRPC_RESPONSE_BODY, captured.value)
+        if (captured.truncated) {
+          span.setTag(`${GRPC_RESPONSE_BODY}.truncated`, true)
+        }
+      }
     }
 
     if (peer) {

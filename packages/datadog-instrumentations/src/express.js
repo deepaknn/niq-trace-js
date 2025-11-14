@@ -32,16 +32,28 @@ const responseJsonChannel = channel('datadog:express:response:json:start')
 
 function wrapResponseJson (json) {
   return function wrappedJson (obj) {
-    if (responseJsonChannel.hasSubscribers) {
-      // backward compat as express 4.x supports deprecated 3.x signature
-      if (arguments.length === 2 && typeof arguments[1] !== 'number') {
-        obj = arguments[1]
-      }
+    // backward compat as express 4.x supports deprecated 3.x signature
+    if (arguments.length === 2 && typeof arguments[1] !== 'number') {
+      obj = arguments[1]
+    }
 
+    // Store response body for payload capture
+    this._payloadBody = obj
+
+    if (responseJsonChannel.hasSubscribers) {
       responseJsonChannel.publish({ req: this.req, res: this, body: obj })
     }
 
     return json.apply(this, arguments)
+  }
+}
+
+function wrapResponseSend (send) {
+  return function wrappedSend (body) {
+    // Store response body for payload capture
+    this._payloadBody = body
+
+    return send.apply(this, arguments)
   }
 }
 
@@ -154,6 +166,7 @@ addHook({ name: 'express', versions: ['>=4'], file: ['lib/express.js'] }, expres
 
   shimmer.wrap(express.response, 'json', wrapResponseJson)
   shimmer.wrap(express.response, 'jsonp', wrapResponseJson)
+  shimmer.wrap(express.response, 'send', wrapResponseSend)
   shimmer.wrap(express.response, 'render', wrapResponseRender)
 
   return express
