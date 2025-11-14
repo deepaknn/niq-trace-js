@@ -22,6 +22,7 @@ const spanKey = 'x-datadog-parent-id'
 const originKey = 'x-datadog-origin'
 const samplingKey = 'x-datadog-sampling-priority'
 const tagsKey = 'x-datadog-tags'
+const niqtidKey = 'niqtid'
 const baggagePrefix = 'ot-baggage-'
 const b3TraceKey = 'x-b3-traceid'
 const b3TraceExpr = /^([0-9a-f]{16}){1,2}$/i
@@ -67,6 +68,7 @@ class TextMapPropagator {
     this._injectB3MultipleHeaders(spanContext, carrier)
     this._injectB3SingleHeader(spanContext, carrier)
     this._injectTraceparent(spanContext, carrier)
+    this._injectNiqtid(spanContext, carrier)
 
     if (injectCh.hasSubscribers) {
       injectCh.publish({ spanContext, carrier })
@@ -196,6 +198,24 @@ class TextMapPropagator {
     } else if (header) {
       carrier[tagsKey] = header
     }
+  }
+
+  _injectNiqtid (spanContext, carrier) {
+    // Get trace ID in hex format (32 chars for 128-bit, 16 chars for 64-bit)
+    const traceIdHex = spanContext.toTraceId(true)
+
+    // Get span ID in hex format (16 chars, zero-padded)
+    const spanIdHex = spanContext.toSpanId(true)
+
+    // Get parent span ID in hex format (16 chars, zero-padded, or all zeros for root spans)
+    const parentIdHex = spanContext._parentId
+      ? spanContext._parentId.toString(16).padStart(16, '0')
+      : '0000000000000000'
+
+    // Format: {trace-id-hex}-{span-id-hex}-{parent-span-id-hex}~niqtid
+    const niqtidValue = `${traceIdHex}-${spanIdHex}-${parentIdHex}~niqtid`
+
+    carrier[niqtidKey] = niqtidValue
   }
 
   _injectB3MultipleHeaders (spanContext, carrier) {

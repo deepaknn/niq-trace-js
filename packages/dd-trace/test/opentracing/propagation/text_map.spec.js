@@ -465,6 +465,125 @@ describe('TextMapPropagator', () => {
         config.baggageMaxBytes = originalMaxBytes
       })
     })
+
+    describe('niqtid header injection', () => {
+      it('should inject niqtid header with 64-bit trace ID and parent span', () => {
+        const carrier = {}
+        const spanContext = createContext({
+          traceId: id('0af7651916cd43dd', 16),
+          spanId: id('b7ad6b7169203331', 16),
+          parentId: id('a1b2c3d4e5f67890', 16)
+        })
+
+        propagator.inject(spanContext, carrier)
+
+        expect(carrier).to.have.property('niqtid', '00000000000000000af7651916cd43dd-b7ad6b7169203331-a1b2c3d4e5f67890~niqtid')
+      })
+
+      it('should inject niqtid header with 128-bit trace ID', () => {
+        const carrier = {}
+        const spanContext = createContext({
+          traceId: id('0af7651916cd43dd8448eb211c80319c', 16),
+          spanId: id('b7ad6b7169203331', 16),
+          parentId: id('a1b2c3d4e5f67890', 16)
+        })
+
+        propagator.inject(spanContext, carrier)
+
+        expect(carrier).to.have.property('niqtid', '0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-a1b2c3d4e5f67890~niqtid')
+      })
+
+      it('should inject niqtid header with root span (no parent)', () => {
+        const carrier = {}
+        const spanContext = createContext({
+          traceId: id('0af7651916cd43dd8448eb211c80319c', 16),
+          spanId: id('b7ad6b7169203331', 16),
+          parentId: null
+        })
+
+        propagator.inject(spanContext, carrier)
+
+        expect(carrier).to.have.property('niqtid', '0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-0000000000000000~niqtid')
+      })
+
+      it('should inject niqtid header with hex format not decimal', () => {
+        const carrier = {}
+        // Create context with trace ID 123 and span ID 456 (decimal)
+        const spanContext = createContext({
+          traceId: id('123', 10),
+          spanId: id('456', 10),
+          parentId: id('789', 10)
+        })
+
+        propagator.inject(spanContext, carrier)
+
+        // Verify niqtid uses hex format (not decimal like x-datadog-trace-id)
+        expect(carrier).to.have.property('x-datadog-trace-id', '123') // decimal
+        expect(carrier).to.have.property('x-datadog-parent-id', '456') // decimal
+        // niqtid should be in hex format (123 = 0x7b, 456 = 0x1c8, 789 = 0x315)
+        expect(carrier).to.have.property('niqtid', '0000000000000000000000000000007b-00000000000001c8-0000000000000315~niqtid')
+      })
+
+      it('should inject niqtid with proper zero-padding for span and parent IDs', () => {
+        const carrier = {}
+        const spanContext = createContext({
+          traceId: id('1', 16),
+          spanId: id('1', 16),
+          parentId: id('1', 16)
+        })
+
+        propagator.inject(spanContext, carrier)
+
+        // All IDs should be properly zero-padded (trace ID to 32 chars, span/parent to 16 chars)
+        expect(carrier).to.have.property('niqtid', '00000000000000000000000000000001-0000000000000001-0000000000000001~niqtid')
+      })
+
+      it('should always inject niqtid regardless of propagation style config', () => {
+        const carrier = {}
+        const spanContext = createContext({
+          traceId: id('0af7651916cd43dd8448eb211c80319c', 16),
+          spanId: id('b7ad6b7169203331', 16),
+          parentId: null
+        })
+
+        // Disable all propagation styles
+        config.tracePropagationStyle.inject = []
+
+        propagator.inject(spanContext, carrier)
+
+        // niqtid should still be injected
+        expect(carrier).to.have.property('niqtid', '0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-0000000000000000~niqtid')
+        // But datadog headers should not be injected
+        expect(carrier).to.not.have.property('x-datadog-trace-id')
+      })
+
+      it('should inject niqtid with same trace ID format as traceparent', () => {
+        const carrier = {}
+        const spanContext = createContext({
+          traceId: id('1111aaaa2222bbbb3333cccc4444dddd', 16),
+          spanId: id('5555eeee6666ffff', 16),
+          parentId: id('9999888877776666', 16),
+          sampling: { priority: AUTO_KEEP }
+        })
+
+        config.tracePropagationStyle.inject = ['tracecontext']
+
+        propagator.inject(spanContext, carrier)
+
+        // Extract trace ID and span ID from traceparent
+        const traceparent = carrier.traceparent
+        const parts = traceparent.split('-')
+        const traceparentTraceId = parts[1]
+        const traceparentSpanId = parts[2]
+
+        // niqtid trace ID and span ID should match traceparent format
+        const niqtidParts = carrier.niqtid.split('-')
+        expect(niqtidParts[0]).to.equal(traceparentTraceId) // trace ID matches
+        expect(niqtidParts[1]).to.equal(traceparentSpanId) // span ID matches
+        expect(niqtidParts[2]).to.equal('9999888877776666') // parent ID
+        expect(niqtidParts[3]).to.equal('~niqtid') // suffix
+      })
+    })
   })
 
   describe('extract', () => {
