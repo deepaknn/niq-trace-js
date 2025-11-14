@@ -11,6 +11,7 @@ const urlFilter = require('./urlfilter')
 const { ERROR_MESSAGE, ERROR_TYPE, ERROR_STACK } = require('../../constants')
 const { createInferredProxySpan, finishInferredProxySpan } = require('./inferred_proxy')
 const TracingPlugin = require('../tracing')
+const { injectCurrentSpanIdIntoHeaders } = require('./response_header_injector')
 
 let extractIp
 
@@ -382,18 +383,29 @@ const web = {
   },
 
   wrapWriteHead (context) {
-    const { req, res } = context
+    const { req, res, span } = context
     const writeHead = res.writeHead
 
     return function (statusCode, statusMessage, headers) {
-      headers = typeof statusMessage === 'string' ? headers : statusMessage
+      const isString = typeof statusMessage === 'string'
+      headers = isString ? headers : statusMessage
       headers = { ...res.getHeaders(), ...headers }
 
       if (req.method.toLowerCase() === 'options' && isOriginAllowed(req, headers)) {
         addAllowHeaders(req, res, headers)
       }
 
-      return writeHead.apply(this, arguments)
+      // Inject current-span-id header into response
+      if (span) {
+        injectCurrentSpanIdIntoHeaders(span, headers)
+      }
+
+      // Call writeHead with modified headers
+      if (isString) {
+        return writeHead.call(this, statusCode, statusMessage, headers)
+      } else {
+        return writeHead.call(this, statusCode, headers)
+      }
     }
   },
   getContext (req) {
@@ -437,7 +449,8 @@ function addAllowHeaders (req, res, headers) {
     'x-datadog-sampled', // Deprecated, but still accept it in case it's sent.
     'x-datadog-sampling-priority',
     'x-datadog-trace-id',
-    'x-datadog-tags'
+    'x-datadog-tags',
+    'current-span-id' // NIQ custom header for server span propagation
   ]
 
   for (const header of contextHeaders) {

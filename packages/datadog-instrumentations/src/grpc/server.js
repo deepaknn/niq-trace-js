@@ -3,6 +3,8 @@
 const types = require('./types')
 const { channel, addHook } = require('../helpers/instrument')
 const shimmer = require('../../../datadog-shimmer')
+const { storage } = require('../../../datadog-core')
+const { injectCurrentSpanIdIntoGrpcMetadata } = require('../../dd-trace/src/plugins/util/response_header_injector')
 
 const startChannel = channel('apm:grpc:server:request:start')
 const asyncStartChannel = channel('apm:grpc:server:request:asyncStart')
@@ -121,6 +123,16 @@ function wrapCallback (callback = () => {}, call, ctx, onCancel) {
     } else {
       ctx.code = OK
       ctx.trailer = trailer
+
+      // Inject current-span-id into gRPC trailer if available
+      try {
+        const store = storage('legacy').getStore()
+        if (store && store.span && trailer && typeof trailer.set === 'function') {
+          injectCurrentSpanIdIntoGrpcMetadata(store.span, trailer)
+        }
+      } catch (e) {
+        // Silently ignore errors in header injection to prevent breaking the response
+      }
     }
 
     finishChannel.publish(ctx)
@@ -138,6 +150,16 @@ function wrapSendStatus (sendStatus, ctx) {
   return function (status) {
     ctx.status = status
     updateChannel.publish(ctx)
+
+    // Inject current-span-id into gRPC status metadata if available
+    try {
+      const store = storage('legacy').getStore()
+      if (store && store.span && status && status.metadata && typeof status.metadata.set === 'function') {
+        injectCurrentSpanIdIntoGrpcMetadata(store.span, status.metadata)
+      }
+    } catch (e) {
+      // Silently ignore errors in header injection to prevent breaking the response
+    }
 
     return sendStatus.apply(this, arguments)
   }
