@@ -1,4 +1,4 @@
-const tracer = require('dd-trace')
+const tracer = require('../../packages/dd-trace')
 tracer.init({
   flushInterval: 0,
   sampleRate: 1,
